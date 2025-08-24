@@ -1,0 +1,5 @@
+DOMAIN = "elrincondelola"
+CONF_HOST = "host"
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"
+EVENT_SSE_UPDATE = "elrincondelola_sse_update"
