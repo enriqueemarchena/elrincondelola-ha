@@ -7,6 +7,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import DOMAIN, EVENT_SSE_UPDATE
@@ -29,7 +30,7 @@ class OcupadoBinarySensor(BinarySensorEntity):
         self._attr_unique_id = "elrincondelola_ocupado"
         self._is_on: bool = False
         self._attrs: dict = {}
-        self._unsub = None
+        self._unsubs = []
 
     @property
     def is_on(self) -> bool:
@@ -40,15 +41,29 @@ class OcupadoBinarySensor(BinarySensorEntity):
         return self._attrs
 
     async def async_added_to_hass(self) -> None:
-        self._unsub = async_dispatcher_connect(self.hass, EVENT_SSE_UPDATE, self._handle_sse_update)
+        # Escuchar eventos SSE de la integración para refrescar estado
+        self._unsubs.append(
+            async_dispatcher_connect(self.hass, EVENT_SSE_UPDATE, self._handle_sse_update)
+        )
+        # Refrescar automáticamente al cambio de día (00:00) igual que "Reserva Hoy"
+        self._unsubs.append(
+            async_track_time_change(self.hass, self._handle_midnight_tick, hour=0, minute=0, second=0)
+        )
         await self._refresh_from_api()
 
     async def async_will_remove_from_hass(self) -> None:
-        if self._unsub:
-            self._unsub()
-            self._unsub = None
+        for unsub in self._unsubs:
+            try:
+                unsub()
+            except Exception:
+                pass
+        self._unsubs = []
 
     async def _handle_sse_update(self) -> None:
+        await self._refresh_from_api()
+
+    async def _handle_midnight_tick(self, now=None) -> None:
+        # Forzar refresco al cambiar el día
         await self._refresh_from_api()
 
     async def _refresh_from_api(self) -> None:
@@ -75,4 +90,3 @@ class OcupadoBinarySensor(BinarySensorEntity):
             "foto_perfil_url": data.get("profile_pic_url"),
         }
         self.async_write_ha_state()
-
